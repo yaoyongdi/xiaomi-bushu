@@ -45,7 +45,7 @@ jobs:
         run: |
           pip3 install pycryptodome requests pytz
           python3 - <<'PYEOF'
-          import os, sys, random, uuid, time, json, requests, urllib.parse
+          import os, sys, random, uuid, time, json, requests
 
           sys.path.insert(0, '.')
           from util import zepp_helper
@@ -63,56 +63,70 @@ jobs:
 
           is_phone = phone.startswith('+86') or (not '@' in phone)
 
+          # Step 1: 登录
           print(f"::group::登录 {phone}")
           access_code, err = zepp_helper.login_access_token(phone, password)
           if access_code is None:
               print(f"::error::登录失败: {err}")
               exit(1)
-          print(f"access_code: {access_code[:10]}...")
           print("::endgroup::")
 
-          # Step 2: 注册手机设备 + 获取token
-          phone_device_id = str(uuid.uuid4())
-          print(f"::group::注册手机设备 {phone_device_id[:8]}")
-          login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, phone_device_id, is_phone)
+          # Step 2: 注册手机设备
+          phone_did = str(uuid.uuid4())
+          print(f"::group::注册手机设备")
+          login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, phone_did, is_phone)
           if login_token is None:
               print(f"::error::获取token失败: {err}")
               exit(1)
-          print(f"user_id: {user_id}")
+          print(f"user_id={user_id} app_token={app_token[:10]}...")
           print("::endgroup::")
 
-          # Step 3: 注册虚拟手环设备（关键步骤！）
-          band_device_id = str(uuid.uuid4())[:16].upper()
-          band_mac = ':'.join([f"{random.randint(0,255):02X}" for _ in range(6)])
-          print(f"::group::注册虚拟手环 MAC={band_mac} ID={band_device_id}")
-          try:
-              band_headers = {
-                  "apptoken": app_token,
-                  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-              }
-              bind_url = "https://api-mifit.huami.com/v2/device/bind"
-              bind_data = {
-                  "mac": band_mac,
-                  "device_id": band_device_id,
-                  "device_type": "1",
-                  "device_source": "1",
-                  "device_name": "Mi Smart Band 7",
-              }
-              bind_resp = requests.post(bind_url, data=bind_data, headers=band_headers, timeout=15)
-              print(f"Bind status: {bind_resp.status_code} body: {bind_resp.text[:200]}")
-              if bind_resp.status_code == 200:
-                  try:
-                      br = bind_resp.json()
-                      if br.get('code') == 0 or br.get('message') == 'success':
-                          print("✅ 虚拟手环注册成功")
-                      else:
-                          print(f"Bind response: {br}")
-                  except:
-                      print(f"Bind raw: {bind_resp.text[:200]}")
+          # Step 3: 注册虚拟手环（用 grant_login_tokens 但改 device_model）
+          band_did = str(uuid.uuid4())
+          print(f"::group::注册虚拟手环")
+          band_headers = {
+              "app_name": "com.xiaomi.hm.health",
+              "x-request-id": f"{uuid.uuid4()}",
+              "accept-language": "zh-CN",
+              "appname": "com.xiaomi.hm.health",
+              "cv": "50818_6.14.0",
+              "v": "2.0",
+              "appplatform": "android_phone",
+              "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          }
+          band_data = {
+              "allow_registration=": "false",
+              "app_name": "com.xiaomi.hm.health",
+              "app_version": "6.14.0",
+              "code": access_code,
+              "country_code": "CN",
+              "device_id": band_did,
+              "device_model": "MIBAND7",
+              "dn": "account.zepp.com,api-user.zepp.com,api-mifit.zepp.com,api-watch.zepp.com,app-analytics.zepp.com,api-analytics.huami.com,auth.zepp.com",
+              "grant_type": "access_token",
+              "lang": "zh_CN",
+              "os_version": "1.5.0",
+              "source": "com.xiaomi.hm.health:6.14.0:50818",
+              "third_name": "band",
+          }
+          resp = requests.post(
+              "https://account.huami.com/v2/client/login",
+              data=band_data,
+              headers=band_headers,
+              timeout=15
+          )
+          print(f"Band reg status={resp.status_code}")
+          if resp.status_code == 200:
+              r = resp.json()
+              ti = r.get('token_info', {})
+              if ti.get('app_token'):
+                  app_token = ti['app_token']
+                  user_id = ti.get('user_id', user_id)
+                  print(f"✅ 手环注册成功")
               else:
-                  print(f"Bind failed, continuing anyway...")
-          except Exception as e:
-              print(f"Bind error: {e}, continuing...")
+                  print(f"Reg response: {json.dumps(r, ensure_ascii=False)[:300]}")
+          else:
+              print(f"Response: {resp.text[:300]}")
           print("::endgroup::")
 
           # Step 4: 提交步数
