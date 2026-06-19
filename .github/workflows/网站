@@ -1,0 +1,132 @@
+name: 网站触发刷步
+
+on:
+  workflow_dispatch:
+    inputs:
+      phone:
+        description: '手机号或邮箱'
+        required: true
+      password:
+        description: '密码'
+        required: true
+      min_step:
+        description: '最小步数'
+        required: false
+        default: '5000'
+      max_step:
+        description: '最大步数'
+        required: false
+        default: '25000'
+
+jobs:
+  step:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: 安装 Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: 执行刷步
+        env:
+          PHONE: ${{ github.event.inputs.phone }}
+          PASSWORD: ${{ github.event.inputs.password }}
+          MIN_STEP: ${{ github.event.inputs.min_step }}
+          MAX_STEP: ${{ github.event.inputs.max_step }}
+        run: |
+          pip3 install requests pytz
+          python3 - <<'PYEOF'
+          import os, json, random, time, requests, re
+
+          phone = os.environ['PHONE']
+          password = os.environ['PASSWORD']
+          min_s = int(os.environ['MIN_STEP'])
+          max_s = int(os.environ['MAX_STEP'])
+
+          headers = {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'User-Agent': 'Dalvik/2.1.0 (Linux; U; Android 13; MI 6 MIUI/20.6.18)',
+          }
+
+          # Step 1: Login
+          print(f"::group::登录 {phone}")
+          url = f'https://api-user.huami.com/registrations/{phone}/tokens'
+          data = {
+              'client_id': 'HuaMi', 'password': password,
+              'redirect_uri': 'https://s3-us-west-2.amazonaws.com/hm-registration/successsignin.html',
+              'token': 'access', 'phone_number': phone,
+          }
+          resp = requests.post(url, data=data, headers=headers, timeout=20, allow_redirects=False)
+          print(f"Login status: {resp.status_code}")
+
+          access_code = None
+          if resp.status_code == 302:
+              loc = resp.headers.get('Location', '')
+              m = re.search(r'access=([^&]+)', loc)
+              if m: access_code = m.group(1)
+          elif resp.status_code == 200:
+              r = resp.json()
+              if r.get('token_info', {}).get('login_token'):
+                  access_code = r['token_info']['login_token']
+
+          if not access_code:
+              m = re.search(r'access=([^&\s"\']+)', resp.text)
+              if m: access_code = m.group(1)
+
+          if not access_code:
+              print(f"::error::登录失败，无法获取access_code")
+              exit(1)
+          print(f"access_code: {access_code[:10]}...")
+          print("::endgroup::")
+
+          # Step 2: Get app_token
+          print("::group::获取token")
+          data2 = {
+              'app_name': 'com.xiaomi.hm.health', 'app_version': '6.3.5',
+              'code': access_code, 'country_code': 'CN',
+              'device_id': '2C8B4939-0CCD-4E94-8CBA-CB8EA6E613A1',
+              'device_model': 'phone', 'grant_type': 'access_token',
+              'third_name': 'huami_phone',
+          }
+          resp2 = requests.post('https://account.huami.com/v2/client/login', data=data2, headers=headers, timeout=20)
+          r2 = resp2.json()
+          app_token = (r2.get('token_info') or {}).get('app_token') or r2.get('app_token')
+          user_id = (r2.get('token_info') or {}).get('user_id') or r2.get('user_id')
+          if not app_token:
+              print(f"::error::获取token失败: {json.dumps(r2)}")
+              exit(1)
+          print(f"user_id: {user_id}")
+          print("::endgroup::")
+
+          # Step 3: Set step
+          step = random.randint(min_s, max_s)
+          print(f"::group::设置步数 {step}")
+          ts = int(time.time())
+          data3 = {
+              'data_json': json.dumps({
+                  'data': [{
+                      'date_time': ts, 'source': 24, 'active': 0,
+                      'total': step, 'calories': 0, 'distance': 0,
+                      'data_type': 1, 'step_type': 1,
+                  }],
+                  'total': step,
+              }),
+              'data_type': 'data', 'device_type': 'android_phone',
+              'last_sync_data_time': ts, 'time_zone': 'GMT+08:00',
+          }
+          h3 = {**headers, 'apptoken': app_token, 'userid': str(user_id)}
+          resp3 = requests.post('https://api-mifit.huami.com/v1/data/band_data.json', data=data3, headers=h3, timeout=20)
+          r3 = resp3.json()
+          print(f"Result: {json.dumps(r3)}")
+          print("::endgroup::")
+
+          if r3.get('code') == 0:
+              print(f"✅ 成功！步数设置为 {step}")
+          else:
+              print(f"❌ 失败: {json.dumps(r3)}")
+              exit(1)
+          PYEOF
