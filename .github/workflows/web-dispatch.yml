@@ -87,7 +87,7 @@ jobs:
           # 仿造 post_fake_brand_data 的数据格式
           import urllib.parse
           today = time.strftime("%F")
-          data_json_raw = json.dumps({
+          data_json_raw = json.dumps([{
               "data": [{
                   "date_time": now_ts,
                   "source": 24,
@@ -99,9 +99,10 @@ jobs:
                   "step_type": 1,
                   "did": "DA932FFFFE8816E7",
                   "tz": 32,
+                  "src": 24
               }],
               "total": step,
-          })
+          }])
           data_json = urllib.parse.quote(data_json_raw)
 
           url = f'https://api-mifit-cn.huami.com/v1/data/band_data.json?&t={t}&r={uuid.uuid4()}'
