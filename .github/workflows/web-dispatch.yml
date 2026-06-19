@@ -45,7 +45,7 @@ jobs:
         run: |
           pip3 install pycryptodome requests pytz
           python3 - <<'PYEOF'
-          import os, sys, random, uuid, time as _time, json, requests
+          import os, sys, random, uuid, time, json, requests
 
           sys.path.insert(0, '.')
           from util import zepp_helper
@@ -79,12 +79,14 @@ jobs:
           print(f"user_id: {user_id}")
           print("::endgroup::")
 
-          # 提交步数（device_type=1 模拟手环设备）
+          # 直接用 zepp_helper 的完整数据提交（含心率模拟, device_type改为1）
           print(f"::group::设置步数 {step}")
-          t = str(int(_time.time() * 1000))
-          now_ts = int(_time.time())
+          t = str(int(time.time() * 1000))
+          now_ts = int(time.time())
 
-          data_json = {
+          # 仿造 post_fake_brand_data 的数据格式
+          today = time.strftime("%F")
+          data_json = json.dumps({
               "data": [{
                   "date_time": now_ts,
                   "source": 24,
@@ -94,26 +96,35 @@ jobs:
                   "distance": 0,
                   "data_type": 1,
                   "step_type": 1,
+                  "did": "DA932FFFFE8816E7",
+                  "tz": 32,
               }],
               "total": step,
-          }
-          data_json_str = json.dumps(data_json)
+          })
 
           url = f'https://api-mifit-cn.huami.com/v1/data/band_data.json?&t={t}&r={uuid.uuid4()}'
           head = {
               "apptoken": app_token,
               "Content-Type": "application/x-www-form-urlencoded"
           }
-          # device_type=1=手环, last_deviceid用登录时的device_id
-          data = f'userid={user_id}&last_sync_data_time={now_ts}&device_type=1&last_deviceid={device_id}&data_json={data_json_str}'
+          data = f'userid={user_id}&last_sync_data_time={now_ts}&device_type=1&last_deviceid=DA932FFFFE8816E7&data_json={data_json}'
 
           resp = requests.post(url, data=data, headers=head, timeout=20)
           if resp.status_code != 200:
-              print(f"::error::请求异常: {resp.status_code}")
+              print(f"::error::请求异常: {resp.status_code} {resp.text[:200]}")
               exit(1)
           result = resp.json()
           print(f"Result: {json.dumps(result)}")
-          if result.get("message") == "success" or result.get("code") == 0:
+
+          # 第一次提交成功后，用原版 post_fake_brand_data 再刷一次（建立设备数据）
+          if result.get("message") == "success":
+              print("首次提交成功，追加完整数据...")
+              ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
+              if ok:
+                  print(f"✅ 成功！步数设置为 {step} [{msg}]")
+              else:
+                  print(f"⚠ 追加提交失败: {msg}")
+          elif result.get("code") == 0:
               print(f"✅ 成功！步数设置为 {step}")
           else:
               print(f"❌ 失败: {json.dumps(result)}")
