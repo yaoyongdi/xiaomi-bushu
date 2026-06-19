@@ -63,6 +63,7 @@ jobs:
 
           is_phone = phone.startswith('+86') or (not '@' in phone)
 
+          # Step 1: 登录
           print(f"::group::登录 {phone}")
           access_code, err = zepp_helper.login_access_token(phone, password)
           if access_code is None:
@@ -70,7 +71,8 @@ jobs:
               exit(1)
           print("::endgroup::")
 
-          print(f"::group::注册手机设备")
+          # Step 2: 获取 token
+          print(f"::group::获取token")
           phone_did = str(uuid.uuid4())
           login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, phone_did, is_phone)
           if login_token is None:
@@ -79,48 +81,74 @@ jobs:
           print(f"user_id={user_id}")
           print("::endgroup::")
 
-          print(f"::group::注册虚拟手环 (尝试3种设备类型)")
-          band_did = str(uuid.uuid4())
-          band_headers = {
-              "app_name": "com.xiaomi.hm.health",
-              "x-request-id": f"{uuid.uuid4()}",
-              "accept-language": "zh-CN",
-              "appname": "com.xiaomi.hm.health",
-              "cv": "50818_6.14.0",
+          # Step 3: 绑定虚拟手环 (关键！抓包确认的API)
+          print(f"::group::绑定虚拟手环")
+          mac = ':'.join([f"{random.randint(0,255):02X}" for _ in range(6)])
+          r = uuid.uuid4()
+          app_time = int(time.time() * 1000)
+          bind_url = "https://api-mifit-cn3.zepp.com/v1/device/binds.json"
+          bind_params = {
+              "r": str(r),
+              "app_time": str(app_time),
+              "productVersion": "-1",
+              "brandType": "-1",
+              "code": "0",
+              "productId": "-1",
+              "activeStatus": "-1",
+              "bind_timezone": "32",
+              "device_source": "262",
+              "device_type": "0",
+              "crcedUserId": "0",
+              "userid": user_id,
+              "appid": "428135909242707968",
+              "auth_key": "",
+              "brand": "Xiaomi",
+              "channel": "Normal",
+              "country": "CN",
+              "cv": "50847_6.16.1",
+              "device": "android_36",
+              "deviceid": "",
+              "displayName": "",
+              "enableMultiDevice": "true",
+              "fw_hr_version": "",
+              "fw_version": "",
+              "hardwareVersion": "",
+              "lang": "zh_CN",
+              "mac": mac,
+              "sn": "",
+              "soft_version": "",
+              "sys_model": "24072PX77C",
+              "sys_version": "Android_16",
+              "timezone": "Asia/Shanghai",
               "v": "2.0",
-              "appplatform": "android_phone",
-              "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           }
-          for dm, tn in [("android_watch", "huami_band"), ("android_band", "band"), ("watch", "huami_watch")]:
-              band_data = {
-                  "allow_registration=": "false",
-                  "app_name": "com.xiaomi.hm.health",
-                  "app_version": "6.14.0",
-                  "code": access_code,
-                  "country_code": "CN",
-                  "device_id": band_did,
-                  "device_model": dm,
-                  "dn": "account.zepp.com,api-user.zepp.com,api-mifit.zepp.com,api-watch.zepp.com,app-analytics.zepp.com,api-analytics.huami.com,auth.zepp.com",
-                  "grant_type": "access_token",
-                  "lang": "zh_CN",
-                  "os_version": "1.5.0",
-                  "source": "com.xiaomi.hm.health:6.14.0:50818",
-                  "third_name": tn,
-              }
-              resp = requests.post("https://account.huami.com/v2/client/login", data=band_data, headers=band_headers, timeout=15)
-              print(f"  {dm}/{tn}: status={resp.status_code}", end="")
-              if resp.status_code == 200:
-                  r = resp.json()
-                  if r.get('token_info', {}).get('app_token'):
-                      print(" ✅")
-                      break
-                  else:
-                      print(f" {resp.text[:100]}")
-              else:
-                  print(f" {resp.text[:100]}")
-              time.sleep(1)
+          bind_headers = {
+              "apptoken": app_token,
+              "User-Agent": "MiFit6.16.1 (24072PX77C; Android 16; Density/3.0)",
+              "appplatform": "android_phone",
+              "appname": "com.xiaomi.hm.health",
+              "X-Request-Id": str(uuid.uuid4()),
+              "cv": "50847_6.16.1",
+              "v": "2.0",
+              "lang": "zh_CN",
+              "country": "CN",
+              "channel": "Normal",
+              "timezone": "Asia/Shanghai",
+              "clientId": "428135909242707968",
+          }
+          resp = requests.get(bind_url, params=bind_params, headers=bind_headers, timeout=15)
+          print(f"MAC={mac} status={resp.status_code}")
+          print(f"Response: {resp.text[:500]}")
+          if resp.status_code == 200:
+              try:
+                  rj = resp.json()
+                  if rj.get('code') == 1 or rj.get('message') == 'success':
+                      print("✅ 虚拟手环绑定成功！")
+              except:
+                  pass
           print("::endgroup::")
 
+          # Step 4: 提交步数
           print(f"::group::设置步数 {step}")
           ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
           if ok:
