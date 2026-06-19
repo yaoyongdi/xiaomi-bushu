@@ -63,7 +63,6 @@ jobs:
 
           is_phone = phone.startswith('+86') or (not '@' in phone)
 
-          # Step 1: 登录
           print(f"::group::登录 {phone}")
           access_code, err = zepp_helper.login_access_token(phone, password)
           if access_code is None:
@@ -71,19 +70,17 @@ jobs:
               exit(1)
           print("::endgroup::")
 
-          # Step 2: 注册手机设备
-          phone_did = str(uuid.uuid4())
           print(f"::group::注册手机设备")
+          phone_did = str(uuid.uuid4())
           login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, phone_did, is_phone)
           if login_token is None:
               print(f"::error::获取token失败: {err}")
               exit(1)
-          print(f"user_id={user_id} app_token={app_token[:10]}...")
+          print(f"user_id={user_id}")
           print("::endgroup::")
 
-          # Step 3: 注册虚拟手环（用 grant_login_tokens 但改 device_model）
+          print(f"::group::注册虚拟手环 (尝试3种设备类型)")
           band_did = str(uuid.uuid4())
-          print(f"::group::注册虚拟手环")
           band_headers = {
               "app_name": "com.xiaomi.hm.health",
               "x-request-id": f"{uuid.uuid4()}",
@@ -94,42 +91,36 @@ jobs:
               "appplatform": "android_phone",
               "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
           }
-          band_data = {
-              "allow_registration=": "false",
-              "app_name": "com.xiaomi.hm.health",
-              "app_version": "6.14.0",
-              "code": access_code,
-              "country_code": "CN",
-              "device_id": band_did,
-              "device_model": "MIBAND7",
-              "dn": "account.zepp.com,api-user.zepp.com,api-mifit.zepp.com,api-watch.zepp.com,app-analytics.zepp.com,api-analytics.huami.com,auth.zepp.com",
-              "grant_type": "access_token",
-              "lang": "zh_CN",
-              "os_version": "1.5.0",
-              "source": "com.xiaomi.hm.health:6.14.0:50818",
-              "third_name": "band",
-          }
-          resp = requests.post(
-              "https://account.huami.com/v2/client/login",
-              data=band_data,
-              headers=band_headers,
-              timeout=15
-          )
-          print(f"Band reg status={resp.status_code}")
-          if resp.status_code == 200:
-              r = resp.json()
-              ti = r.get('token_info', {})
-              if ti.get('app_token'):
-                  app_token = ti['app_token']
-                  user_id = ti.get('user_id', user_id)
-                  print(f"✅ 手环注册成功")
+          for dm, tn in [("android_watch", "huami_band"), ("android_band", "band"), ("watch", "huami_watch")]:
+              band_data = {
+                  "allow_registration=": "false",
+                  "app_name": "com.xiaomi.hm.health",
+                  "app_version": "6.14.0",
+                  "code": access_code,
+                  "country_code": "CN",
+                  "device_id": band_did,
+                  "device_model": dm,
+                  "dn": "account.zepp.com,api-user.zepp.com,api-mifit.zepp.com,api-watch.zepp.com,app-analytics.zepp.com,api-analytics.huami.com,auth.zepp.com",
+                  "grant_type": "access_token",
+                  "lang": "zh_CN",
+                  "os_version": "1.5.0",
+                  "source": "com.xiaomi.hm.health:6.14.0:50818",
+                  "third_name": tn,
+              }
+              resp = requests.post("https://account.huami.com/v2/client/login", data=band_data, headers=band_headers, timeout=15)
+              print(f"  {dm}/{tn}: status={resp.status_code}", end="")
+              if resp.status_code == 200:
+                  r = resp.json()
+                  if r.get('token_info', {}).get('app_token'):
+                      print(" ✅")
+                      break
+                  else:
+                      print(f" {resp.text[:100]}")
               else:
-                  print(f"Reg response: {json.dumps(r, ensure_ascii=False)[:300]}")
-          else:
-              print(f"Response: {resp.text[:300]}")
+                  print(f" {resp.text[:100]}")
+              time.sleep(1)
           print("::endgroup::")
 
-          # Step 4: 提交步数
           print(f"::group::设置步数 {step}")
           ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
           if ok:
