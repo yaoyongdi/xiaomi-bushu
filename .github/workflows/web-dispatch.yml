@@ -101,7 +101,9 @@ jobs:
                   "tz": 32,
                   "src": 24
               }],
-              "total": step,
+              "summary": json.dumps({"v":6,"slp":{"st":0,"ed":0,"dp":0,"lt":0,"wk":0},"stp":{"ttl":step,"dis":0,"cal":0,"wk":0,"rn":0,"runDist":0,"runCal":0},"goal":8000,"tz":"28800"}),
+              "source": 24,
+              "type": 0
           }])
           data_json = urllib.parse.quote(data_json_raw)
 
