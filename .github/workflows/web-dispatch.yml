@@ -111,14 +111,21 @@ jobs:
                   "timezone": "Asia/Shanghai", "v": "2.0",
               }
 
-          # GET 签名 + 查设备
+          # 查设备：不要传 publickeyhash/random，否则服务端返回签名而
+          # 非设备列表
           check_r = str(uuid.uuid4())
-          sig_resp = requests.get(bind_url, params=make_sig_params(check_r), headers=common_headers, timeout=10)
+          check_params = {
+              "r": check_r, "device_type": "0", "userid": user_id,
+              "appid": "428135909242707968", "channel": "Normal",
+              "country": "CN", "cv": "50847_6.16.1", "device": "android_36",
+              "lang": "zh_CN", "timezone": "Asia/Shanghai", "v": "2.0",
+          }
+          dev_resp = requests.get(bind_url, params=check_params, headers=common_headers, timeout=10)
           
           has_band = False
-          if sig_resp.status_code == 200:
+          if dev_resp.status_code == 200:
               try:
-                  sj = sig_resp.json()
+                  sj = dev_resp.json()
                   if isinstance(sj.get("data"), list) and len(sj["data"]) > 0:
                       devices = sj["data"]
                       has_band = any(d.get("device_source") == 262 for d in devices)
@@ -126,7 +133,7 @@ jobs:
                       for d in devices:
                           print(f"  - MAC={d.get('mac','?')} source={d.get('device_source','?')}")
                   else:
-                      print(f"空响应: {sig_resp.text[:200]}")
+                      print(f"设备列表: {sj}")
               except Exception as e:
                   print(f"解析异常: {e}")
 
