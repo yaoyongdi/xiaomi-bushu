@@ -45,7 +45,7 @@ jobs:
         run: |
           pip3 install pycryptodome requests pytz
           python3 - <<'PYEOF'
-          import os, sys, random, uuid, time, json, requests
+          import os, sys, random, uuid, time, json, requests, urllib.parse
 
           sys.path.insert(0, '.')
           from util import zepp_helper
@@ -61,7 +61,6 @@ jobs:
               max_s = int(os.environ['MAX_STEP'])
               step = random.randint(min_s, max_s)
 
-          device_id = str(uuid.uuid4())
           is_phone = phone.startswith('+86') or (not '@' in phone)
 
           print(f"::group::登录 {phone}")
@@ -69,70 +68,60 @@ jobs:
           if access_code is None:
               print(f"::error::登录失败: {err}")
               exit(1)
+          print(f"access_code: {access_code[:10]}...")
           print("::endgroup::")
 
-          print("::group::获取token")
-          login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, device_id, is_phone)
+          # Step 2: 注册手机设备 + 获取token
+          phone_device_id = str(uuid.uuid4())
+          print(f"::group::注册手机设备 {phone_device_id[:8]}")
+          login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, phone_device_id, is_phone)
           if login_token is None:
               print(f"::error::获取token失败: {err}")
               exit(1)
           print(f"user_id: {user_id}")
           print("::endgroup::")
 
-          # 直接用 zepp_helper 的完整数据提交（含心率模拟, device_type改为1）
-          print(f"::group::设置步数 {step}")
-          t = str(int(time.time() * 1000))
-          now_ts = int(time.time())
-
-          # 仿造 post_fake_brand_data 的数据格式
-          import urllib.parse
-          today = time.strftime("%F")
-          data_json_raw = json.dumps([{
-              "data": [{
-                  "date_time": now_ts,
-                  "source": 24,
-                  "active": 0,
-                  "total": step,
-                  "calories": 0,
-                  "distance": 0,
-                  "data_type": 1,
-                  "step_type": 1,
-                  "did": "DA932FFFFE8816E7",
-                  "tz": 32,
-                  "src": 24
-              }],
-              "summary": json.dumps({"v":6,"slp":{"st":0,"ed":0,"dp":0,"lt":0,"wk":0},"stp":{"ttl":step,"dis":0,"cal":0,"wk":0,"rn":0,"runDist":0,"runCal":0},"goal":8000,"tz":"28800"}),
-              "source": 24,
-              "type": 0
-          }])
-          data_json = urllib.parse.quote(data_json_raw)
-
-          url = f'https://api-mifit-cn.huami.com/v1/data/band_data.json?&t={t}&r={uuid.uuid4()}'
-          head = {
-              "apptoken": app_token,
-              "Content-Type": "application/x-www-form-urlencoded"
-          }
-          data = f'userid={user_id}&last_sync_data_time={now_ts}&device_type=1&last_deviceid=DA932FFFFE8816E7&data_json={data_json}'
-
-          resp = requests.post(url, data=data, headers=head, timeout=20)
-          if resp.status_code != 200:
-              print(f"::error::请求异常: {resp.status_code} {resp.text[:200]}")
-              exit(1)
-          result = resp.json()
-          print(f"Result: {json.dumps(result)}")
-
-          # 第一次提交成功后，用原版 post_fake_brand_data 再刷一次（建立设备数据）
-          if result.get("message") == "success":
-              print("首次提交成功，追加完整数据...")
-              ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
-              if ok:
-                  print(f"✅ 成功！步数设置为 {step} [{msg}]")
+          # Step 3: 注册虚拟手环设备（关键步骤！）
+          band_device_id = str(uuid.uuid4())[:16].upper()
+          band_mac = ':'.join([f"{random.randint(0,255):02X}" for _ in range(6)])
+          print(f"::group::注册虚拟手环 MAC={band_mac} ID={band_device_id}")
+          try:
+              band_headers = {
+                  "apptoken": app_token,
+                  "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+              }
+              bind_url = "https://api-mifit.huami.com/v2/device/bind"
+              bind_data = {
+                  "mac": band_mac,
+                  "device_id": band_device_id,
+                  "device_type": "1",
+                  "device_source": "1",
+                  "device_name": "Mi Smart Band 7",
+              }
+              bind_resp = requests.post(bind_url, data=bind_data, headers=band_headers, timeout=15)
+              print(f"Bind status: {bind_resp.status_code} body: {bind_resp.text[:200]}")
+              if bind_resp.status_code == 200:
+                  try:
+                      br = bind_resp.json()
+                      if br.get('code') == 0 or br.get('message') == 'success':
+                          print("✅ 虚拟手环注册成功")
+                      else:
+                          print(f"Bind response: {br}")
+                  except:
+                      print(f"Bind raw: {bind_resp.text[:200]}")
               else:
-                  print(f"⚠ 追加提交失败: {msg}")
-          elif result.get("code") == 0:
-              print(f"✅ 成功！步数设置为 {step}")
+                  print(f"Bind failed, continuing anyway...")
+          except Exception as e:
+              print(f"Bind error: {e}, continuing...")
+          print("::endgroup::")
+
+          # Step 4: 提交步数
+          print(f"::group::设置步数 {step}")
+          ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
+          if ok:
+              print(f"✅ 成功！步数设置为 {step} [{msg}]")
           else:
-              print(f"❌ 失败: {json.dumps(result)}")
+              print(f"❌ 失败: {msg}")
               exit(1)
           print("::endgroup::")
           PYEOF
