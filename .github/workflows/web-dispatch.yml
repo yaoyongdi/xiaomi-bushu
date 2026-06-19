@@ -9,12 +9,16 @@ on:
       password:
         description: '密码'
         required: true
-      min_step:
-        description: '最小步数'
+      step:
+        description: '目标步数(0=随机)'
         required: false
-        default: '5000'
+        default: '0'
+      min_step:
+        description: '最小步数(随机模式)'
+        required: false
+        default: '18000'
       max_step:
-        description: '最大步数'
+        description: '最大步数(随机模式)'
         required: false
         default: '25000'
 
@@ -35,6 +39,7 @@ jobs:
         env:
           PHONE: ${{ github.event.inputs.phone }}
           PASSWORD: ${{ github.event.inputs.password }}
+          STEP: ${{ github.event.inputs.step }}
           MIN_STEP: ${{ github.event.inputs.min_step }}
           MAX_STEP: ${{ github.event.inputs.max_step }}
         run: |
@@ -47,33 +52,33 @@ jobs:
 
           phone = os.environ['PHONE']
           password = os.environ['PASSWORD']
-          min_s = int(os.environ['MIN_STEP'])
-          max_s = int(os.environ['MAX_STEP'])
+          step_env = os.environ.get('STEP', '0').strip()
 
-          # Step 1: Login via Zepp API
-          print(f"::group::登录 {phone}")
-          access_code, err = zepp_helper.login_access_token(phone, password)
-          if access_code is None:
-              print(f"::error::登录失败: {err}")
-              exit(1)
-          print(f"access_code: {access_code[:10]}...")
-          print("::endgroup::")
+          if step_env and step_env != '0':
+              step = int(step_env)
+          else:
+              min_s = int(os.environ['MIN_STEP'])
+              max_s = int(os.environ['MAX_STEP'])
+              step = random.randint(min_s, max_s)
 
           import uuid
           device_id = str(uuid.uuid4())
           is_phone = phone.startswith('+86') or (not '@' in phone)
 
-          # Step 2: Get login_token + app_token
+          print(f"::group::登录 {phone}")
+          access_code, err = zepp_helper.login_access_token(phone, password)
+          if access_code is None:
+              print(f"::error::登录失败: {err}")
+              exit(1)
+          print("::endgroup::")
+
           print("::group::获取token")
           login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, device_id, is_phone)
           if login_token is None:
               print(f"::error::获取token失败: {err}")
               exit(1)
-          print(f"user_id: {user_id}")
           print("::endgroup::")
 
-          # Step 3: Post step
-          step = random.randint(min_s, max_s)
           print(f"::group::设置步数 {step}")
           ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
           if ok:
