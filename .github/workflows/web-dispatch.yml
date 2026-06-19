@@ -45,7 +45,7 @@ jobs:
         run: |
           pip3 install pycryptodome requests pytz
           python3 - <<'PYEOF'
-          import os, sys, random, uuid, time, json, requests
+          import os, sys, random, uuid, time, json, requests, hashlib, base64
 
           sys.path.insert(0, '.')
           from util import zepp_helper
@@ -81,47 +81,13 @@ jobs:
           print(f"user_id={user_id}")
           print("::endgroup::")
 
-          # Step 3: 绑定虚拟手环 (关键！抓包确认的API)
-          print(f"::group::绑定虚拟手环")
-          mac = ':'.join([f"{random.randint(0,255):02X}" for _ in range(6)])
-          r = uuid.uuid4()
-          app_time = int(time.time() * 1000)
-          bind_url = "https://api-mifit-cn3.zepp.com/v1/device/binds.json"
-          bind_params = {
-              "r": str(r),
-              "app_time": str(app_time),
-              "productVersion": "-1",
-              "brandType": "-1",
-              "code": "0",
-              "productId": "-1",
-              "activeStatus": "-1",
-              "bind_timezone": "32",
-              "device_source": "262",
-              "device_type": "0",
-              "crcedUserId": "0",
-              "userid": user_id,
-              "appid": "428135909242707968",
-              "auth_key": "",
-              "brand": "Xiaomi",
-              "channel": "Normal",
-              "country": "CN",
-              "cv": "50847_6.16.1",
-              "device": "android_36",
-              "deviceid": "",
-              "displayName": "",
-              "enableMultiDevice": "true",
-              "fw_hr_version": "",
-              "fw_version": "",
-              "hardwareVersion": "",
-              "lang": "zh_CN",
-              "mac": mac,
-              "sn": "",
-              "soft_version": "",
-              "sys_model": "24072PX77C",
-              "sys_version": "Android_16",
-              "timezone": "Asia/Shanghai",
-              "v": "2.0",
-          }
+          # Step 3: 生成虚拟手环 MAC 和设备信息
+          mac_bytes = [random.randint(0,255) for _ in range(6)]
+          mac = ':'.join([f"{b:02X}" for b in mac_bytes])
+          deviceid = f"C7{mac_bytes[0]:02X}{mac_bytes[1]:02X}FFFE{mac_bytes[2]:02X}{mac_bytes[3]:02X}{mac_bytes[4]:02X}{mac_bytes[5]:02X}"
+          sn = f"{random.randint(30000,50000)}/AAABR{random.randint(10000000,99999999):08d}"
+          print(f"::group::绑定虚拟手环 MAC={mac} deviceid={deviceid}")
+
           bind_headers = {
               "apptoken": app_token,
               "User-Agent": "MiFit6.16.1 (24072PX77C; Android 16; Density/3.0)",
@@ -135,17 +101,77 @@ jobs:
               "channel": "Normal",
               "timezone": "Asia/Shanghai",
               "clientId": "428135909242707968",
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           }
-          resp = requests.get(bind_url, params=bind_params, headers=bind_headers, timeout=15)
-          print(f"MAC={mac} status={resp.status_code}")
-          print(f"Response: {resp.text[:500]}")
+
+          app_time = str(int(time.time()))
+          r = str(uuid.uuid4())
+          bind_url = "https://api-mifit-cn3.zepp.com/v1/device/binds.json"
+          
+          # 先 GET 查询签名
+          print("  Step 3a: 获取绑定签名...")
+          sig_params = {
+              "r": r,
+              "device_type": "0",
+              "userid": user_id,
+              "appid": "428135909242707968",
+              "channel": "Normal",
+              "country": "CN",
+              "cv": "50847_6.16.1",
+              "device": "android_36",
+              "lang": "zh_CN",
+              "publickeyhash": "SHA1:1863c2cce5d159413bed92c4b163c279",
+              "random": base64.b64encode(os.urandom(32)).decode(),
+              "timezone": "Asia/Shanghai",
+              "v": "2.0",
+          }
+          sig_resp = requests.get(bind_url, params=sig_params, headers=bind_headers, timeout=15)
+          print(f"  Signature status={sig_resp.status_code}")
+
+          # POST 绑定设备
+          print("  Step 3b: POST 绑定设备...")
+          auth_key = hashlib.md5(f"{deviceid}{app_token}".encode()).hexdigest()
+          bind_post_data = {
+              "app_time": app_time,
+              "productVersion": "258",
+              "brandType": "-1",
+              "code": "0",
+              "productId": "103",
+              "activeStatus": "1",
+              "bind_timezone": "32",
+              "device_source": "262",
+              "device_type": "0",
+              "crcedUserId": "0",
+              "userid": user_id,
+              "appid": "428135909242707968",
+              "auth_key": auth_key,
+              "brand": "Xiaomi",
+              "channel": "Normal",
+              "country": "CN",
+              "cv": "50847_6.16.1",
+              "device": "android_36",
+              "deviceid": deviceid,
+              "displayName": "",
+              "enableMultiDevice": "true",
+              "fw_hr_version": "",
+              "fw_version": "2.2.0.1",
+              "hardwareVersion": "0.91.133.3",
+              "lang": "zh_CN",
+              "mac": mac,
+              "sn": sn,
+              "soft_version": "6.16.1",
+              "sys_model": "24072PX77C",
+              "sys_version": "Android_16",
+              "timezone": "Asia/Shanghai",
+              "v": "2.0",
+          }
+          bind_params = {"r": r}
+          resp = requests.post(bind_url, params=bind_params, data=bind_post_data, headers=bind_headers, timeout=15)
+          print(f"  状态={resp.status_code} 响应={resp.text[:300]}")
           if resp.status_code == 200:
-              try:
-                  rj = resp.json()
-                  if rj.get('code') == 1 or rj.get('message') == 'success':
-                      print("✅ 虚拟手环绑定成功！")
-              except:
-                  pass
+              rj = resp.json()
+              if rj.get('code') == 1:
+                  print("✅ 虚拟手环绑定成功！")
           print("::endgroup::")
 
           # Step 4: 提交步数
