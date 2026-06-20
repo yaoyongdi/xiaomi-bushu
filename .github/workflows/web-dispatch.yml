@@ -1,4 +1,4 @@
-name: 网站触发刷步（解绑+重绑+提交）
+name: 网站触发刷步（固定设备+解绑+绑定+提交）
 
 on:
   workflow_dispatch:
@@ -100,105 +100,44 @@ jobs:
 
           headers = make_headers(app_token)
 
-          # ===== Step 3: 列出所有已绑定设备 =====
-          print(f"::group::查询已绑定设备")
-          devices_to_unbind = []
-          r0 = str(uuid.uuid4())
-          list_params = {
-              "r": r0, "device_type": "0", "userid": user_id,
-              "appid": "428135909242707968", "channel": "Normal",
-              "country": "CN", "cv": "50847_6.16.1", "device": "android_36",
-              "lang": "zh_CN",
-              "publickeyhash": "SHA1:1863c2cce5d159413bed92c4b163c279",
-              "random": base64.b64encode(os.urandom(32)).decode(),
-              "timezone": "Asia/Shanghai", "v": "2.0",
-          }
-          dev_resp = requests.get(BIND_URL, params=list_params, headers=headers, timeout=10)
-          if dev_resp.status_code == 200:
-              try:
-                  sj = dev_resp.json()
-                  if isinstance(sj.get("data"), list):
-                      for d in sj["data"]:
-                          mac = d.get("mac", "")
-                          did = d.get("deviceid", "")
-                          src = d.get("device_source", "")
-                          if mac and did:
-                              devices_to_unbind.append({"mac": mac, "deviceid": did, "source": src})
-                      print(f"发现 {len(devices_to_unbind)} 个设备")
-                      for d in devices_to_unbind:
-                          print(f"  MAC={d['mac']}  deviceid={d['deviceid']}  source={d['source']}")
-                  else:
-                      print(f"设备列表为空或无data字段: {json.dumps(sj, ensure_ascii=False)[:200]}")
-              except Exception as e:
-                  print(f"解析异常: {e} 原始={dev_resp.text[:300]}")
-          else:
-              print(f"查询设备 HTTP={dev_resp.status_code} {dev_resp.text[:200]}")
-          print("::endgroup::")
-
-          # ===== Step 4: 解除所有设备绑定 =====
-          if devices_to_unbind:
-              print(f"::group::解除 {len(devices_to_unbind)} 个设备绑定")
-              for dev in devices_to_unbind:
-                  r_del = str(uuid.uuid4())
-                  app_time_del = str(int(time.time()))
-                  del_params = {
-                      "r": r_del,
-                      "app_time": app_time_del,
-                      "productVersion": "-1",
-                      "brandType": "-1",
-                      "code": "0",
-                      "productId": "-1",
-                      "activeStatus": "-1",
-                      "bind_timezone": "32",
-                      "device_source": "262",
-                      "device_type": "0",
-                      "crcedUserId": "0",
-                      "userid": user_id,
-                      "appid": "428135909242707968",
-                      "auth_key": "",
-                      "brand": "Xiaomi",
-                      "channel": "Normal",
-                      "country": "CN",
-                      "cv": "50847_6.16.1",
-                      "device": "android_36",
-                      "deviceid": dev["deviceid"],
-                      "displayName": "",
-                      "enableMultiDevice": "true",
-                      "fw_hr_version": "",
-                      "fw_version": "",
-                      "hardwareVersion": "",
-                      "lang": "zh_CN",
-                      "mac": dev["mac"],
-                      "sn": "",
-                      "soft_version": "",
-                      "sys_model": "24072PX77C",
-                      "sys_version": "Android_16",
-                      "timezone": "Asia/Shanghai",
-                      "v": "2.0",
-                  }
-                  try:
-                      del_resp = requests.delete(BIND_URL, params=del_params, headers=headers, timeout=10)
-                      if del_resp.status_code == 200:
-                          rj = del_resp.json()
-                          if rj.get("code") == 1:
-                              print(f"  ✅ 已解绑 MAC={dev['mac']}")
-                          else:
-                              print(f"  ⚠️ 解绑异常 MAC={dev['mac']} code={rj.get('code')} msg={rj.get('message','')}")
-                      else:
-                          print(f"  ❌ 解绑失败 MAC={dev['mac']} HTTP={del_resp.status_code} {del_resp.text[:100]}")
-                  except Exception as e:
-                      print(f"  ❌ 解绑异常 MAC={dev['mac']}: {e}")
-                  time.sleep(0.5)
-              print("::endgroup::")
-          else:
-              print("无已绑定设备，跳过解绑")
-
-          # ===== Step 5: 绑定新虚拟手环 =====
-          print(f"::group::绑定新虚拟手环")
-          mac_bytes = [random.randint(0,255) for _ in range(6)]
+          # ===== Step 3: 计算固定MAC/deviceid（账号哈希） =====
+          h = hashlib.sha256(phone.encode()).hexdigest()
+          mac_bytes = [int(h[i:i+2], 16) for i in range(0, 12, 2)]
           mac = ':'.join([f"{b:02X}" for b in mac_bytes])
           deviceid = f"C7{mac_bytes[0]:02X}{mac_bytes[1]:02X}FFFE{mac_bytes[2]:02X}{mac_bytes[3]:02X}{mac_bytes[4]:02X}{mac_bytes[5]:02X}"
           sn = f"{random.randint(30000,50000)}/AAABR{random.randint(10000000,99999999):08d}"
+          print(f"固定设备 MAC={mac}  deviceid={deviceid}")
+
+          # ===== Step 4: 解绑该固定设备（HA··R已验证DELETE端点可用） =====
+          print(f"::group::解绑旧设备 MAC={mac}")
+          r_del = str(uuid.uuid4())
+          app_time_del = str(int(time.time()))
+          del_params = {
+              "r": r_del, "app_time": app_time_del,
+              "productVersion": "-1", "brandType": "-1", "code": "0", "productId": "-1",
+              "activeStatus": "-1", "bind_timezone": "32", "device_source": "262", "device_type": "0",
+              "crcedUserId": "0", "userid": user_id, "appid": "428135909242707968",
+              "auth_key": "", "brand": "Xiaomi", "channel": "Normal", "country": "CN",
+              "cv": "50847_6.16.1", "device": "android_36", "deviceid": deviceid,
+              "displayName": "", "enableMultiDevice": "true",
+              "fw_hr_version": "", "fw_version": "", "hardwareVersion": "",
+              "lang": "zh_CN", "mac": mac, "sn": "", "soft_version": "",
+              "sys_model": "24072PX77C", "sys_version": "Android_16",
+              "timezone": "Asia/Shanghai", "v": "2.0",
+          }
+          try:
+              del_resp = requests.delete(BIND_URL, params=del_params, headers=headers, timeout=10)
+              rj = del_resp.json() if del_resp.status_code == 200 else {}
+              if rj.get("code") == 1:
+                  print(f"  ✅ 已解绑旧设备")
+              else:
+                  print(f"  ℹ️ 无旧设备或已清理 code={rj.get('code')} msg={rj.get('message','')}")
+          except Exception as e:
+              print(f"  ⚠️ 解绑异常(忽略): {e}")
+          print("::endgroup::")
+
+          # ===== Step 5: 绑定固定虚拟手环 =====
+          print(f"::group::绑定虚拟手环 MAC={mac}")
 
           # 先获取绑定签名
           bind_r = str(uuid.uuid4())
