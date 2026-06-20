@@ -134,7 +134,7 @@ def main():
 
         # 触发 GitHub Actions
         ok, msg = trigger_github(phone, acc['password'], step)
-        status = 'pending' if ok else 'failed'
+        status = 'success' if ok else 'failed'
         log(f"  结果: {'✅ 已提交' if ok else '❌ 失败'} — {msg}")
 
         # 写入日志
