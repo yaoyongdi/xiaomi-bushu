@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # cron_step.py — 宝塔计划任务：触发所有已启用账号的刷步
 # 用法: python3 /www/wwwroot/bs.adi0618.com/cron_step.py
-# 宝塔 cron: 0 8,10,12,14,16,18,22 * * *
+# 宝塔 cron: 0 8,10,12,14,16,18,20 * * *
 
 import sqlite3, time, json, random, os, urllib.request, sys
 from datetime import datetime
@@ -39,7 +39,7 @@ def get_latest_run_id():
     return 'unknown'
 
 
-def trigger_github(phone, password, step):
+def trigger_github(phone, password, step, min_step, max_step):
     """触发 GitHub Actions workflow dispatch，返回 (ok, run_id, message)"""
     url = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches"
     payload = json.dumps({
@@ -48,8 +48,8 @@ def trigger_github(phone, password, step):
             "phone": phone,
             "password": password,
             "step": str(step),
-            "min_step": "18000",
-            "max_step": "25000",
+            "min_step": str(min_step),
+            "max_step": str(max_step),
         }
     }).encode('utf-8')
 
@@ -64,13 +64,13 @@ def trigger_github(phone, password, step):
         if resp.status == 204:
             time.sleep(2)
             run_id = get_latest_run_id()
-            return True, run_id, f"[自动] 已提交到 GitHub (Run #{run_id})"
-        return False, 'unknown', f"[自动] HTTP {resp.status}"
+            return True, run_id, f"[自动/递进] 已提交到 GitHub (Run #{run_id})"
+        return False, 'unknown', f"[自动/递进] HTTP {resp.status}"
     except urllib.error.HTTPError as e:
         body = e.read().decode('utf-8', errors='replace')[:300]
-        return False, 'unknown', f"[自动] HTTP {e.code}: {body}"
+        return False, 'unknown', f"[自动/递进] HTTP {e.code}: {body}"
     except Exception as e:
-        return False, 'unknown', f"[自动] {e}"
+        return False, 'unknown', f"[自动/递进] {e}"
 
 
 def get_last_success_step(account_id):
@@ -146,7 +146,7 @@ def main():
             add_step_log(
                 acc['user_id'], acc['id'], phone,
                 last_step, 'skipped',
-                f'[自动] 已达最大步数 {max_step}，跳过'
+                f'[自动/递进] 已达最大步数 {max_step}，跳过'
             )
             continue
 
@@ -155,7 +155,7 @@ def main():
         log(f"  目标步数: {step} (范围: {min_step}-{max_step})")
 
         # 触发 GitHub Actions
-        ok, run_id, msg = trigger_github(phone, acc['password'], step)
+        ok, run_id, msg = trigger_github(phone, acc['password'], step, min_step, max_step)
         status = 'success' if ok else 'failed'
         log(f"  结果: {'✅ 已提交' if ok else '❌ 失败'} — {msg}")
 
@@ -173,3 +173,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
