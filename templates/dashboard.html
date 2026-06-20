@@ -1,0 +1,504 @@
+{% extends "base.html" %}
+{% block title %}控制台 - 步数助手{% endblock %}
+{% block content %}
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold">🏃 我的控制台</h5>
+        <button class="btn btn-primary btn-sm rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+            <i class="bi bi-plus-lg"></i> 添加
+        </button>
+    </div>
+
+    <!-- 账号卡片列表 -->
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted small fw-bold">小米运动账号</span>
+            <span class="badge bg-primary rounded-pill" id="accountCount">0</span>
+        </div>
+        <div id="accountList"></div>
+    </div>
+
+    <!-- 执行日志 -->
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted small fw-bold">执行日志</span>
+            <div>
+                <button class="btn btn-sm btn-outline-danger rounded-pill px-2 py-0 me-1" onclick="clearLogs()" style="font-size:0.75rem;">
+                    <i class="bi bi-trash"></i> 清空
+                </button>
+                <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0" onclick="loadLogs()" style="font-size:0.75rem;">
+                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                </button>
+            </div>
+        </div>
+        <div id="logList"></div>
+    </div>
+
+    <!-- 使用教程 -->
+    <div class="card mt-3">
+        <div class="card-header bg-white py-2">
+            <span class="fw-bold small"><i class="bi bi-book"></i> 使用教程</span>
+        </div>
+        <div class="card-body py-2">
+            <ol class="mb-0 small ps-3">
+                <li>下载 <strong>Zepp Life</strong> APP，用邮箱注册</li>
+                <li>登录后「我的」→「第三方接入」→ 绑定微信</li>
+                <li>在本站添加账号，设置步数范围即可自动刷步</li>
+            </ol>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑账号弹窗 -->
+<div class="modal fade" id="addAccountModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold" id="modalTitle">添加小米运动账号</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-2">
+                <form id="accountForm">
+                    <input type="hidden" name="accountId" value="">
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">手机号/邮箱 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" name="phone" placeholder="Zepp Life 注册手机号或邮箱" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold">密码 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" name="password" placeholder="Zepp Life 登录密码" required>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">最小步数</label>
+                            <input type="number" class="form-control form-control-sm" name="min_step" value="18000" min="1000">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">最大步数</label>
+                            <input type="number" class="form-control form-control-sm" name="max_step" value="25000" max="99999">
+                        </div>
+                    </div>
+                    <div class="alert alert-info small mb-0 py-2" style="font-size:0.7rem;">
+                        <i class="bi bi-info-circle"></i>
+                        每天 8:00/10:00/12:00/14:00/16:00/20:00 自动修改<br>
+                        步数不会低于最小，也不会超过最大
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="saveAccount()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* 账号卡片 */
+.account-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px 16px 14px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    position: relative;
+}
+.account-card .acc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+.account-card .acc-email {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    word-break: break-all;
+    flex: 1;
+    margin-right: 8px;
+    line-height: 1.4;
+}
+.account-card .acc-badge {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+}
+.account-card .acc-meta {
+    font-size: 0.78rem;
+    color: #666;
+    margin-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+.account-card .acc-meta span {
+    white-space: nowrap;
+}
+.account-card .acc-meta i {
+    color: var(--primary);
+}
+.account-card .acc-actions {
+    display: flex;
+    gap: 8px;
+}
+.account-card .acc-actions .btn {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.78rem;
+    padding: 8px 4px;
+    border-radius: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    transition: all 0.2s;
+}
+.account-card .acc-actions .btn:active {
+    transform: scale(0.96);
+}
+.btn-run { background: #eef2ff; color: #4f46e5; border-color: #c7d2fe; }
+.btn-run:hover { background: #e0e7ff; }
+.btn-custom { background: #ecfeff; color: #0891b2; border-color: #a5f3fc; }
+.btn-custom:hover { background: #cffafe; }
+.btn-edit { background: #fffbeb; color: #d97706; border-color: #fde68a; }
+.btn-edit:hover { background: #fef3c7; }
+.btn-del { background: #fff1f2; color: #e11d48; border-color: #fecdd3; }
+.btn-del:hover { background: #ffe4e6; }
+/* 日志条目 */
+.log-item {
+    background: #fff;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.82rem;
+}
+.log-item .log-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+.log-item .log-dot.success { background: #22c55e; }
+.log-item .log-dot.failed { background: #ef4444; }
+.log-item .log-dot.pending { background: #f59e0b; }
+.log-item .log-info {
+    flex: 1;
+    min-width: 0;
+}
+.log-item .log-account {
+    font-weight: 600;
+    color: #1a1a2e;
+    font-size: 0.85rem;
+    word-break: break-all;
+    line-height: 1.3;
+}
+.log-item .log-detail {
+    color: #999;
+    font-size: 0.7rem;
+    margin-top: 2px;
+    display: flex;
+    gap: 10px;
+}
+.log-item .log-step {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--primary);
+    flex-shrink: 0;
+    text-align: right;
+    min-width: 56px;
+    line-height: 1.4;
+}
+.log-item .log-status-tag {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+.log-status-tag.success { background: #dcfce7; color: #16a34a; }
+.log-status-tag.failed { background: #fef2f2; color: #dc2626; }
+.log-type-tag {
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+.log-type-tag.auto { background: #dbeafe; color: #2563eb; }
+.log-type-tag.manual { background: #fef3c7; color: #d97706; }
+/* 空状态 */
+.empty-state {
+    text-align: center;
+    padding: 30px 0;
+    color: #bbb;
+}
+.empty-state i {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 8px;
+}
+/* 桌面端列表模式 */
+@media (min-width: 769px) {
+    .container { max-width: 720px; }
+    .account-card .acc-actions .btn { flex: none; min-width: 56px; }
+}
+</style>
+<script>
+let currentAccounts = [];
+
+async function loadAccounts() {
+    const result = await API.get('/api/accounts');
+    if (result.success) {
+        currentAccounts = result.accounts;
+        renderAccounts();
+        document.getElementById('accountCount').textContent = currentAccounts.length;
+    }
+}
+
+function renderAccounts() {
+    const el = document.getElementById('accountList');
+    if (currentAccounts.length === 0) {
+        el.innerHTML = `<div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <p class="small">暂无账号，点击上方「添加」开始</p>
+        </div>`;
+        return;
+    }
+    el.innerHTML = currentAccounts.map(a => `
+        <div class="account-card">
+            <div class="acc-header">
+                <div class="acc-email">${escapeHtml(a.phone)}</div>
+                <span class="badge rounded-pill ${a.enabled ? 'bg-success' : 'bg-secondary'} acc-badge">
+                    ${a.enabled ? '已启用' : '已禁用'}
+                </span>
+            </div>
+            <div class="acc-meta">
+                <span><i class="bi bi-graph-up"></i> ${a.min_step.toLocaleString()} - ${a.max_step.toLocaleString()}</span>
+                ${a.last_step ? `<span><i class="bi bi-check2"></i> 上次 ${a.last_step.toLocaleString()} 步</span>` : ''}
+                ${a.last_run_at ? `<span><i class="bi bi-clock"></i> ${formatTime(a.last_run_at).split(' ')[0]}</span>` : ''}
+            </div>
+            <div class="acc-actions">
+                <button class="btn btn-run" onclick="runSingle(${a.id})" title="每次递增500~2000步">
+                    <i class="bi bi-play-fill"></i> 随机递增
+                </button>
+                <button class="btn btn-custom" onclick="runCustom(${a.id})" title="指定步数">
+                    <i class="bi bi-pencil-square"></i> 自定义步数
+                </button>
+                <button class="btn btn-edit" onclick="editAccount(${a.id})" title="修改账号信息">
+                    <i class="bi bi-pencil"></i> 修改
+                </button>
+                <button class="btn btn-del" onclick="deleteAccount(${a.id})" title="删除账号">
+                    <i class="bi bi-trash"></i> 删除
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function saveAccount() {
+    const form = document.getElementById('accountForm');
+    const fd = new FormData(form);
+    const data = {
+        phone: fd.get('phone').trim(),
+        password: fd.get('password').trim(),
+        min_step: parseInt(fd.get('min_step')) || 18000,
+        max_step: parseInt(fd.get('max_step')) || 25000,
+    };
+    if (!data.phone || !data.password) {
+        showToast('错误', '账号和密码不能为空', 'error');
+        return;
+    }
+    const accountId = fd.get('accountId');
+    const result = accountId
+        ? await API.put(`/api/accounts/${accountId}`, data)
+        : await API.post('/api/accounts', data);
+    if (result.success) {
+        showToast('成功', result.message, 'success');
+        bootstrap.Modal.getInstance(document.getElementById('addAccountModal')).hide();
+        form.reset();
+        form.querySelector('[name=accountId]').value = '';
+        await loadAccounts();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+function editAccount(id) {
+    const acc = currentAccounts.find(a => a.id === id);
+    if (!acc) return;
+    const form = document.getElementById('accountForm');
+    form.querySelector('[name=accountId]').value = acc.id;
+    form.querySelector('[name=phone]').value = acc.phone;
+    form.querySelector('[name=password]').value = acc.password || '';
+    form.querySelector('[name=min_step]').value = acc.min_step;
+    form.querySelector('[name=max_step]').value = acc.max_step;
+    document.getElementById('modalTitle').textContent = '编辑小米运动账号';
+    new bootstrap.Modal(document.getElementById('addAccountModal')).show();
+}
+
+document.getElementById('addAccountModal').addEventListener('hidden.bs.modal', () => {
+    document.getElementById('accountForm').reset();
+    document.getElementById('accountForm').querySelector('[name=accountId]').value = '';
+    document.getElementById('modalTitle').textContent = '添加小米运动账号';
+});
+
+async function runSingle(id) {
+    const btn = event.target.closest('button');
+    setBtnLoading(btn, '<span class="spinner-border spinner-border-sm"></span>');
+    try {
+        const result = await API.post(`/api/step/run/${id}`, { mode: 'progressive' });
+        if (result.success) {
+            showToast('已提交', `随机递增 → ${result.step}步`, 'success');
+            btn.dataset.logId = result.log_id || '';
+            pollStatus(result.run_id, btn, result.step);
+            return;
+        } else {
+            showToast('失败', result.message, 'error');
+        }
+        await loadAccounts();
+        await loadLogs();
+    } finally {
+        if (!btn.dataset.polling) resetBtn(btn, '<i class="bi bi-play-fill"></i> 随机递增');
+    }
+}
+
+async function runCustom(id) {
+    const step = prompt('输入目标步数（至少1000）：', '20000');
+    if (!step) return;
+    if (isNaN(step) || parseInt(step) < 1000) {
+        showToast('错误', '步数至少1000', 'error');
+        return;
+    }
+    const btn = event.target.closest('button');
+    setBtnLoading(btn, '<span class="spinner-border spinner-border-sm"></span>');
+    try {
+        const result = await API.post(`/api/step/run/${id}`, { mode: 'custom', step: parseInt(step) });
+        if (result.success) {
+            showToast('已提交', `自定义步数 ${step}步`, 'success');
+            btn.dataset.logId = result.log_id || '';
+            pollStatus(result.run_id, btn, step);
+            return;
+        } else {
+            showToast('失败', result.message, 'error');
+        }
+        await loadAccounts();
+        await loadLogs();
+    } finally {
+        if (!btn.dataset.polling) resetBtn(btn, '<i class="bi bi-pencil-square"></i> 自定义步数');
+    }
+}
+
+function setBtnLoading(btn, html) {
+    btn.disabled = true;
+    btn.dataset.origHtml = btn.innerHTML;
+    btn.innerHTML = html;
+}
+
+function resetBtn(btn, defaultHtml) {
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.origHtml || defaultHtml;
+    delete btn.dataset.origHtml;
+}
+
+async function pollStatus(runId, btn, stepVal) {
+    btn.dataset.polling = '1';
+    const maxAttempts = 30;
+    const logId = btn.dataset.logId || '';
+    for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const status = await API.get(`/api/step/status/${runId}`);
+        if (status.status === 'completed') {
+            if (status.conclusion === 'success') {
+                showToast('完成 ✅', `${stepVal || status.step}步`, 'success');
+                if (logId) await API.post(`/api/step/result/${logId}`, {
+                    step: stepVal || 0, status: 'success',
+                    message: `GitHub 执行成功，步数 ${stepVal}`
+                });
+            } else {
+                showToast('失败 ❌', status.step || '', 'error');
+                if (logId) await API.post(`/api/step/result/${logId}`, {
+                    step: stepVal || 0, status: 'failed',
+                    message: 'GitHub 执行失败'
+                });
+            }
+            break;
+        }
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${i+1}/${maxAttempts}`;
+    }
+    delete btn.dataset.polling;
+    resetBtn(btn, '<i class="bi bi-play-fill"></i> 随机递增');
+    await loadAccounts();
+    await loadLogs();
+}
+
+async function deleteAccount(id) {
+    if (!confirm('确定要删除这个账号吗？')) return;
+    const result = await API.del(`/api/accounts/${id}`);
+    if (result.success) {
+        showToast('成功', '已删除', 'success');
+        await loadAccounts();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+async function loadLogs() {
+    const result = await API.get('/api/logs?limit=30');
+    const el = document.getElementById('logList');
+    if (!result.success || !result.logs.length) {
+        el.innerHTML = '<div class="empty-state"><i class="bi bi-journal-text"></i><p class="small">暂无日志</p></div>';
+        return;
+    }
+    el.innerHTML = result.logs.map(l => {
+        const st = l.step ? l.step.toLocaleString() : '-';
+        const isSucc = l.status === 'success';
+        const isSkipped = l.status === 'skipped';
+        const timeStr = formatTime(l.created_at);
+        // 解析 自动/手动 标签
+        let typeTag = '';
+        const msg = l.message || '';
+        if (msg.startsWith('[自动]')) typeTag = '<span class="log-type-tag auto">自动</span>';
+        else if (msg.startsWith('[手动]')) typeTag = '<span class="log-type-tag manual">手动</span>';
+        // 状态
+        let statusHtml;
+        if (isSkipped) statusHtml = '<span class="log-status-tag" style="background:#f1f5f9;color:#64748b">→ 跳过</span>';
+        else statusHtml = `<span class="log-status-tag ${isSucc ? 'success' : 'failed'}">${isSucc ? '✓ 成功' : '✗ 失败'}</span>`;
+        return `
+        <div class="log-item">
+            <div class="log-dot ${isSucc ? 'success' : (isSkipped ? '' : 'failed')}" style="${isSkipped ? 'background:#94a3b8' : ''}"></div>
+            <div class="log-info">
+                <div class="log-account">${escapeHtml(l.account_phone)}</div>
+                <div class="log-detail">
+                    ${typeTag}
+                    <span>${timeStr}</span>
+                    ${statusHtml}
+                </div>
+            </div>
+            <div class="log-step">${st}</div>
+        </div>`;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function clearLogs() {
+    if (!confirm('确定清空所有执行日志？')) return;
+    await API.post('/api/logs/clear');
+    showToast('成功', '日志已清空', 'success');
+    await loadLogs();
+}
+
+loadAccounts();
+loadLogs();
+</script>
+{% endblock %}
