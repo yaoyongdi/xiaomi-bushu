@@ -1,4 +1,4 @@
-"""
+﻿"""
 步数助手 - Flask Web 应用
 多用户刷步数系统 + 卡密管理
 """
@@ -265,10 +265,15 @@ def api_run_single_account(account_id):
                                    target['min_step'], target['max_step'], step=step)
 
     if result['success']:
+        mode_label = {
+            'custom': '[手动/自定义]',
+            'progressive': '[手动/递进]',
+            'random': '[手动/随机]',
+        }.get(mode, '[手动/递进]')
         log_id = add_step_log(
             session['user_id'], target['id'], target['phone'],
             step if mode != 'random' else 0, 'success',
-            f"[手动] 已提交到 GitHub (Run #{result['run_id']})",
+            f"{mode_label} 已提交到 GitHub (Run #{result['run_id']})",
         )
         result['log_id'] = log_id
         result['step'] = step if mode != 'random' else 0
@@ -336,7 +341,7 @@ def api_run_all_accounts():
         add_step_log(
             session['user_id'], acc['id'], acc['phone'],
             step, 'success' if result['success'] else 'failed',
-            f"[手动] 已提交到 GitHub (Run #{result.get('run_id', 'unknown')})",
+            f"[手动/递进] 已提交到 GitHub (Run #{result.get('run_id', 'unknown')})",
         )
         results.append({
             'phone': acc['phone'],
@@ -528,3 +533,4 @@ if __name__ == '__main__':
     debug = os.environ.get('DEBUG', 'true').lower() == 'true'
     logger.info(f"步数助手启动: http://0.0.0.0:{port}")
     app.run(host='0.0.0.0', port=port, debug=debug)
+
