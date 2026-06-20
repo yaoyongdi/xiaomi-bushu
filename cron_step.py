@@ -21,8 +21,26 @@ def log(msg):
     sys.stdout.flush()
 
 
+def get_latest_run_id():
+    """获取最近一次 workflow run ID"""
+    url = f"https://api.github.com/repos/{REPO}/actions/runs?per_page=1"
+    req = urllib.request.Request(url)
+    req.add_header('Authorization', f'Bearer {GITHUB_TOKEN}')
+    req.add_header('Accept', 'application/vnd.github.v3+json')
+    req.add_header('User-Agent', 'Baota-Cron/1.0')
+    try:
+        resp = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(resp.read().decode('utf-8'))
+        runs = data.get('workflow_runs', [])
+        if runs:
+            return str(runs[0]['id'])
+    except:
+        pass
+    return 'unknown'
+
+
 def trigger_github(phone, password, step):
-    """触发 GitHub Actions workflow dispatch"""
+    """触发 GitHub Actions workflow dispatch，返回 (ok, run_id, message)"""
     url = f"https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/dispatches"
     payload = json.dumps({
         "ref": BRANCH,
@@ -43,12 +61,16 @@ def trigger_github(phone, password, step):
 
     try:
         resp = urllib.request.urlopen(req, timeout=15)
-        return resp.status == 204, f"[自动] HTTP {resp.status}"
+        if resp.status == 204:
+            time.sleep(2)
+            run_id = get_latest_run_id()
+            return True, run_id, f"[自动] 已提交到 GitHub (Run #{run_id})"
+        return False, 'unknown', f"[自动] HTTP {resp.status}"
     except urllib.error.HTTPError as e:
         body = e.read().decode('utf-8', errors='replace')[:300]
-        return False, f"[自动] HTTP {e.code}: {body}"
+        return False, 'unknown', f"[自动] HTTP {e.code}: {body}"
     except Exception as e:
-        return False, f"[自动] {e}"
+        return False, 'unknown', f"[自动] {e}"
 
 
 def get_last_success_step(account_id):
@@ -133,7 +155,7 @@ def main():
         log(f"  目标步数: {step} (范围: {min_step}-{max_step})")
 
         # 触发 GitHub Actions
-        ok, msg = trigger_github(phone, acc['password'], step)
+        ok, run_id, msg = trigger_github(phone, acc['password'], step)
         status = 'success' if ok else 'failed'
         log(f"  结果: {'✅ 已提交' if ok else '❌ 失败'} — {msg}")
 
