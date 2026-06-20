@@ -1,0 +1,570 @@
+{% extends "base.html" %}
+{% block title %}管理后台 - 步数助手{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+    <h4 class="mb-4"><i class="bi bi-gear"></i> 管理后台</h4>
+
+    <!-- 概览卡片 -->
+    <div class="row g-3 mb-4" id="statsRow">
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-primary bg-opacity-10 border-0 h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-primary mb-0" id="statUsers">-</h3>
+                    <small class="text-muted">注册用户</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-success bg-opacity-10 border-0 h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-success mb-0" id="statAccounts">-</h3>
+                    <small class="text-muted">小米账号</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-info bg-opacity-10 border-0 h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-info mb-0" id="statToday">-</h3>
+                    <small class="text-muted">今日执行</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card bg-warning bg-opacity-10 border-0 h-100">
+                <div class="card-body text-center">
+                    <h3 class="text-warning mb-0" id="statCards">-</h3>
+                    <small class="text-muted">可用卡密</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 导航 -->
+    <ul class="nav nav-tabs mb-3" id="adminTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabCards">
+                <i class="bi bi-key"></i> 卡密管理
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabUsers">
+                <i class="bi bi-people"></i> 用户管理
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabLogs">
+                <i class="bi bi-journal-text"></i> 执行日志
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabConfig">
+                <i class="bi bi-sliders"></i> 系统设置
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- 卡密管理 -->
+        <div class="tab-pane fade show active" id="tabCards">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">卡密列表</h5>
+                    <div>
+                        <button class="btn btn-sm btn-primary me-2" onclick="generateCards()">
+                            <i class="bi bi-plus-circle"></i> 生成卡密
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="exportCards()">
+                            <i class="bi bi-download"></i> 导出
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>卡密</th>
+                                    <th>状态</th>
+                                    <th>使用者</th>
+                                    <th>生成时间</th>
+                                    <th>使用时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cardTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用户管理 -->
+        <div class="tab-pane fade" id="tabUsers">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>用户名</th>
+                                    <th>密码</th>
+                                    <th>卡密</th>
+                                    <th>角色</th>
+                                    <th>状态</th>
+                                    <th>注册时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 执行日志 -->
+        <div class="tab-pane fade" id="tabLogs">
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">执行日志</h5>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearAllLogs()">
+                        <i class="bi bi-trash"></i> 清空所有日志
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>类型</th>
+                                    <th>用户</th>
+                                    <th>账号</th>
+                                    <th>步数</th>
+                                    <th>状态</th>
+                                    <th>说明</th>
+                                    <th>时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adminLogTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系统设置 -->
+        <div class="tab-pane fade" id="tabConfig">
+            <div class="card">
+                <div class="card-body">
+                    <h5>注册模式</h5>
+                    <p class="text-muted">当前仅支持<strong>卡密注册</strong>，用户注册必须提供有效卡密。</p>
+                </div>
+                <hr>
+                <div class="card-body">
+                    <h5>定时任务</h5>
+                    <p class="text-muted">每日自动运行：<strong>08:00 / 10:00 / 12:00 / 14:00 / 16:00 / 20:00</strong></p>
+                </div>
+                <hr>
+                <div class="card-body">
+                    <h5>修改管理员账号</h5>
+                    <div class="mb-3">
+                        <label class="form-label">新用户名</label>
+                        <input type="text" class="form-control" id="adminUsername" placeholder="admin">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">新密码</label>
+                        <input type="password" class="form-control" id="adminPassword" placeholder="至少6位">
+                    </div>
+                    <button class="btn btn-primary" onclick="updateAdmin()">保存管理员信息</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 用户编辑弹窗 -->
+    <div class="modal fade" id="userEditModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-pencil-square"></i> 编辑用户设置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editUserId">
+                    <div class="mb-3">
+                        <label class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="editUsername">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">密码（留空不修改）</label>
+                        <input type="text" class="form-control" id="editPassword" placeholder="至少6位">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" id="editEnabled">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                    <hr>
+                    <h6><i class="bi bi-watch"></i> 小米运动账号</h6>
+                    <div class="mb-3">
+                        <label class="form-label">手机号</label>
+                        <input type="text" class="form-control" id="editMiPhone" placeholder="小米运动注册手机号">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">密码</label>
+                        <input type="text" class="form-control" id="editMiPassword" placeholder="小米运动密码">
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label">最小步数</label>
+                            <input type="number" class="form-control" id="editMinStep" value="18000">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">最大步数</label>
+                            <input type="number" class="form-control" id="editMaxStep" value="25000">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveUserEdit()">
+                        <i class="bi bi-check-lg"></i> 保存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 生成卡密结果弹窗 -->
+    <div class="modal fade" id="cardsResultModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">卡密已生成</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted">以下卡密仅显示一次，请保存后关闭：</p>
+                    <textarea class="form-control font-monospace" id="cardsResult" rows="10" readonly></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" onclick="copyCards()">
+                        <i class="bi bi-clipboard"></i> 复制全部
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 加载统计数据
+async function loadStats() {
+    const result = await API.get('/api/admin/stats');
+    if (result.success) {
+        document.getElementById('statUsers').textContent = result.stats.total_users;
+        document.getElementById('statAccounts').textContent = result.stats.total_accounts;
+        document.getElementById('statToday').textContent = `${result.stats.today_success}/${result.stats.today_runs}`;
+        document.getElementById('statCards').textContent = result.stats.unused_cards;
+    }
+}
+
+// 加载卡密
+async function loadCards() {
+    const result = await API.get('/api/admin/cards?page=1&per_page=100');
+    const tbody = document.getElementById('cardTable');
+    if (result.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">暂无卡密</td></tr>';
+        return;
+    }
+    tbody.innerHTML = result.items.map((c, idx) => `
+        <tr>
+            <td>${idx + 1}</td>
+            <td><code style="cursor:pointer" onclick="copyCard('${c.key_code}')" title="点击复制">${c.key_code}</code></td>
+            <td>
+                <span class="badge ${c.is_used ? 'bg-secondary' : 'bg-success'}">
+                    ${c.is_used ? '已使用' : '可用'}
+                </span>
+            </td>
+            <td>${c.used_by || '-'}</td>
+            <td><small>${formatTime(c.generated_at)}</small></td>
+            <td><small>${c.used_at ? formatTime(c.used_at) : '-'}</small></td>
+            <td>
+                <button class="btn btn-sm btn-outline-secondary me-1" onclick="copyCard('${c.key_code}')" title="复制"><i class="bi bi-clipboard"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteCard(${c.id})"><i class="bi bi-trash"></i></button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// 生成卡密
+async function generateCards() {
+    const count = prompt('输入生成数量（1-100）：', '10');
+    if (!count) return;
+    const result = await API.post('/api/admin/cards/generate', { count: parseInt(count) });
+    if (result.success) {
+        document.getElementById('cardsResult').value = result.keys.join('\n');
+        new bootstrap.Modal(document.getElementById('cardsResultModal')).show();
+        await loadCards();
+        await loadStats();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+function copyCards() {
+    const textarea = document.getElementById('cardsResult');
+    textarea.select();
+    document.execCommand('copy');
+    showToast('成功', '已复制到剪贴板', 'success');
+}
+
+function exportCards() {
+    API.get('/api/admin/cards?page=1&per_page=100').then(r => {
+        if (!r.items.length) return showToast('提示', '没有卡密', 'info');
+        const text = r.items
+            .filter(c => !c.is_used)
+            .map(c => c.key_code)
+            .join('\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `卡密_${new Date().toISOString().slice(0,10)}.txt`;
+        a.click();
+    });
+}
+
+// 加载用户
+async function loadUsers() {
+    const result = await API.get('/api/admin/users');
+    if (result.success) {
+        document.getElementById('userTable').innerHTML = result.users.map((u, idx) => `
+            <tr>
+                <td>${idx + 1}</td>
+                <td><a href="#" class="text-decoration-none" onclick="editUser(${u.id});return false">${escapeAdminHtml(u.username)}</a></td>
+                <td><code>${escapeAdminHtml(u.password_hash || '-')}</code></td>
+                <td><code>${escapeAdminHtml(u.card_key_used || '-')}</code></td>
+                <td>
+                    <span class="badge ${u.is_admin ? 'bg-warning' : 'bg-secondary'}">
+                        ${u.is_admin ? '管理员' : '用户'}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge ${u.enabled ? 'bg-success' : 'bg-danger'}">
+                        ${u.enabled ? '正常' : '已禁用'}
+                    </span>
+                </td>
+                <td><small>${formatTime(u.created_at)}</small></td>
+                <td>
+                    ${!u.is_admin ? `
+                    <div class="btn-group btn-group-sm">
+                    <button class="btn btn-sm ${u.enabled ? 'btn-outline-danger' : 'btn-outline-success'}"
+                            onclick="toggleUser(${u.id}, ${!u.enabled})">
+                        ${u.enabled ? '禁用' : '启用'}
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${u.id})">删除</button>
+                    </div>
+                    ` : '<small class="text-muted">-</small>'}
+                </td>
+            </tr>
+        `).join('');
+    }
+}
+
+async function toggleUser(userId, enabled) {
+    const result = await API.post(`/api/admin/users/${userId}/toggle`, { enabled });
+    if (result.success) {
+        showToast('成功', enabled ? '已启用' : '已禁用', 'success');
+        await loadUsers();
+        await loadStats();
+    }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('确定删除此用户？所有关联账号和日志将被清除！')) return;
+    const result = await API.del(`/api/admin/users/${userId}`);
+    if (result.success) {
+        showToast('成功', '用户已删除', 'success');
+        await loadUsers();
+        await loadStats();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+async function deleteCard(cardId) {
+    if (!confirm('确定删除此卡密？')) return;
+    const result = await API.del(`/api/admin/cards/${cardId}`);
+    if (result.success) {
+        showToast('成功', '卡密已删除', 'success');
+        await loadCards();
+        await loadStats();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+function copyCard(code) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(code).then(() => showToast('已复制', code, 'success'));
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        ta.style.position = 'absolute';
+        ta.style.top = '0';
+        ta.style.opacity = '0';
+        ta.style.pointerEvents = 'none';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('已复制', code, 'success');
+    }
+}
+
+// 加载全局日志
+async function loadAdminLogs() {
+    const result = await API.get('/api/admin/logs?page=1');
+    const tbody = document.getElementById('adminLogTable');
+    if (!result.items || !result.items.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">暂无日志</td></tr>';
+        return;
+    }
+    tbody.innerHTML = result.items.map((l, idx) => {
+        // 解析 自动/手动 类型
+        let runTypeBadge = '', cleanMessage = l.message || '';
+        if (cleanMessage.startsWith('[自动]')) {
+            runTypeBadge = '<span class="badge bg-primary">自动</span>';
+            cleanMessage = cleanMessage.slice(4);
+        } else if (cleanMessage.startsWith('[手动]')) {
+            runTypeBadge = '<span class="badge bg-warning text-dark">手动</span>';
+            cleanMessage = cleanMessage.slice(4);
+        }
+        let statusClass = l.status === 'success' ? 'bg-success' : (l.status === 'pending' ? 'bg-info' : (l.status === 'skipped' ? 'bg-secondary' : 'bg-danger'));
+        let statusText = l.status === 'success' ? '成功' : (l.status === 'pending' ? '提交中' : (l.status === 'skipped' ? '已跳过' : '失败'));
+        return `
+        <tr>
+            <td><small class="text-muted">${idx + 1}</small></td>
+            <td>${runTypeBadge || '<small class="text-muted">-</small>'}</td>
+            <td>${l.username || '-'}</td>
+            <td>${l.account_phone || '-'}</td>
+            <td>${l.step || '-'}</td>
+            <td><span class="badge ${statusClass}">${statusText}</span></td>
+            <td><small>${cleanMessage || ''}</small></td>
+            <td><small>${formatTime(l.created_at)}</small></td>
+        </tr>`;
+    }).join('');
+}
+
+// 清空所有日志
+async function clearAllLogs() {
+    if (!confirm('确定清空所有用户的执行日志吗？此操作不可恢复！')) return;
+    const result = await API.post('/api/admin/logs/clear');
+    if (result.success) {
+        showToast('成功', result.message, 'success');
+        await loadAdminLogs();
+        await loadStats();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+// ===== 用户编辑弹窗 =====
+let userEditModal = null;
+document.addEventListener('DOMContentLoaded', () => {
+    userEditModal = new bootstrap.Modal(document.getElementById('userEditModal'));
+});
+
+async function editUser(userId) {
+    const result = await API.get(`/api/admin/users/${userId}`);
+    if (!result.success) return showToast('失败', result.message, 'error');
+    const u = result.user;
+    document.getElementById('editUserId').value = u.id;
+    document.getElementById('editUsername').value = u.username || '';
+    document.getElementById('editPassword').value = u.password_hash || '';
+    document.getElementById('editEnabled').value = u.enabled ? '1' : '0';
+    const mi = u.mi_account || {};
+    document.getElementById('editMiPhone').value = mi.phone || '';
+    document.getElementById('editMiPassword').value = mi.password || '';
+    document.getElementById('editMinStep').value = mi.min_step || 18000;
+    document.getElementById('editMaxStep').value = mi.max_step || 25000;
+    userEditModal.show();
+}
+
+async function saveUserEdit() {
+    const userId = document.getElementById('editUserId').value;
+    const username = document.getElementById('editUsername').value.trim();
+    const password = document.getElementById('editPassword').value.trim();
+    const enabled = document.getElementById('editEnabled').value === '1';
+    const miPhone = document.getElementById('editMiPhone').value.trim();
+    const miPassword = document.getElementById('editMiPassword').value.trim();
+    const minStep = parseInt(document.getElementById('editMinStep').value) || 18000;
+    const maxStep = parseInt(document.getElementById('editMaxStep').value) || 25000;
+
+    if (!username) return showToast('提示', '用户名不能为空', 'error');
+    if (password && password.length < 6) return showToast('提示', '密码至少6位', 'error');
+
+    const body = { username, enabled };
+    if (password) body.password = password;
+    if (miPhone && miPassword) {
+        body.mi_account = { phone: miPhone, password: miPassword, min_step: minStep, max_step: maxStep };
+    }
+
+    const result = await API.put(`/api/admin/users/${userId}`, body);
+    if (result.success) {
+        showToast('成功', result.message, 'success');
+        userEditModal.hide();
+        await loadUsers();
+        await loadStats();
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+// 加载系统配置
+async function loadConfig() {
+    // 仅卡密模式，无需加载
+}
+
+async function saveConfig() {
+    // 仅卡密模式
+}
+
+async function updateAdmin() {
+    const username = document.getElementById('adminUsername').value.trim();
+    const password = document.getElementById('adminPassword').value.trim();
+    if (!username || !password) return showToast('提示', '用户名和密码不能为空', 'error');
+    if (password.length < 6) return showToast('提示', '密码至少6位', 'error');
+    const result = await API.put('/api/admin/credentials', { username, password });
+    if (result.success) {
+        showToast('成功', '管理员信息已更新，请重新登录', 'success');
+    } else {
+        showToast('失败', result.message, 'error');
+    }
+}
+
+function escapeAdminHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 首次加载
+loadStats();
+loadCards();
+loadUsers();
+loadAdminLogs();
+loadConfig();
+</script>
+{% endblock %}
