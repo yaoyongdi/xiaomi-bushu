@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: 执行刷步
+      - name: 执行刷步（含自动绑定）
         env:
           PHONE: ${{ github.event.inputs.phone }}
           PASSWORD: ${{ github.event.inputs.password }}
@@ -45,7 +45,7 @@ jobs:
         run: |
           pip3 install pycryptodome requests pytz
           python3 - <<'PYEOF'
-          import os, sys, random, uuid
+          import os, sys, random, uuid, time, json, requests, hashlib, base64
 
           sys.path.insert(0, '.')
           from util import zepp_helper
@@ -63,6 +63,7 @@ jobs:
 
           is_phone = phone.startswith('+86') or (not '@' in phone)
 
+          # Step 1: 登录
           print(f"::group::登录 {phone}")
           access_code, err = zepp_helper.login_access_token(phone, password)
           if access_code is None:
@@ -70,6 +71,7 @@ jobs:
               exit(1)
           print("::endgroup::")
 
+          # Step 2: 获取 token
           print(f"::group::获取token")
           phone_did = str(uuid.uuid4())
           login_token, app_token, user_id, err = zepp_helper.grant_login_tokens(access_code, phone_did, is_phone)
@@ -79,6 +81,107 @@ jobs:
           print(f"user_id={user_id}")
           print("::endgroup::")
 
+          # Step 3: 检查/绑定设备（新账号必须绑定手环才能改步数）
+          print(f"::group::检查/绑定设备")
+          bind_url = "https://api-mifit-cn3.zepp.com/v1/device/binds.json"
+          rxid = str(uuid.uuid4())
+          common_headers = {
+              "apptoken": app_token,
+              "User-Agent": "MiFit6.16.1 (24072PX77C; Android 16; Density/3.0)",
+              "appplatform": "android_phone",
+              "appname": "com.xiaomi.hm.health",
+              "X-Request-Id": rxid,
+              "cv": "50847_6.16.1",
+              "v": "2.0",
+              "lang": "zh_CN",
+              "country": "CN",
+              "channel": "Normal",
+              "timezone": "Asia/Shanghai",
+              "clientId": "428135909242707968",
+          }
+
+          def make_sig_params(r):
+              return {
+                  "r": r, "device_type": "0", "userid": user_id,
+                  "appid": "428135909242707968", "channel": "Normal",
+                  "country": "CN", "cv": "50847_6.16.1", "device": "android_36",
+                  "lang": "zh_CN",
+                  "publickeyhash": "SHA1:1863c2cce5d159413bed92c4b163c279",
+                  "random": base64.b64encode(os.urandom(32)).decode(),
+                  "timezone": "Asia/Shanghai", "v": "2.0",
+              }
+
+          # 查设备：不要传 publickeyhash/random，否则服务端返回签名而
+          # 非设备列表
+          check_r = str(uuid.uuid4())
+          check_params = {
+              "r": check_r, "device_type": "0", "userid": user_id,
+              "appid": "428135909242707968", "channel": "Normal",
+              "country": "CN", "cv": "50847_6.16.1", "device": "android_36",
+              "lang": "zh_CN", "timezone": "Asia/Shanghai", "v": "2.0",
+          }
+          dev_resp = requests.get(bind_url, params=check_params, headers=common_headers, timeout=10)
+          
+          has_band = False
+          if dev_resp.status_code == 200:
+              try:
+                  sj = dev_resp.json()
+                  if isinstance(sj.get("data"), list) and len(sj["data"]) > 0:
+                      devices = sj["data"]
+                      has_band = any(d.get("device_source") == 262 for d in devices)
+                      print(f"已有 {len(devices)} 个设备")
+                      for d in devices:
+                          print(f"  - MAC={d.get('mac','?')} source={d.get('device_source','?')}")
+                  else:
+                      print(f"设备列表: {sj}")
+              except Exception as e:
+                  print(f"解析异常: {e}")
+
+          if not has_band:
+              print("未发现手环设备，开始自动绑定...")
+              
+              mac_bytes = [random.randint(0,255) for _ in range(6)]
+              mac = ':'.join([f"{b:02X}" for b in mac_bytes])
+              deviceid = f"C7{mac_bytes[0]:02X}{mac_bytes[1]:02X}FFFE{mac_bytes[2]:02X}{mac_bytes[3]:02X}{mac_bytes[4]:02X}{mac_bytes[5]:02X}"
+              sn = f"{random.randint(30000,50000)}/AAABR{random.randint(10000000,99999999):08d}"
+              
+              # 获取绑定签名
+              bind_r = str(uuid.uuid4())
+              requests.get(bind_url, params=make_sig_params(bind_r), headers=common_headers, timeout=10)
+              
+              auth_key = hashlib.md5(f"{deviceid}{app_token}".encode()).hexdigest()
+              app_time = str(int(time.time()))
+              bind_post = {
+                  "app_time": app_time, "productVersion": "258", "brandType": "-1",
+                  "code": "0", "productId": "103", "activeStatus": "1",
+                  "bind_timezone": "32", "device_source": "262", "device_type": "0",
+                  "crcedUserId": "0", "userid": user_id, "appid": "428135909242707968",
+                  "auth_key": auth_key, "brand": "Xiaomi", "channel": "Normal",
+                  "country": "CN", "cv": "50847_6.16.1", "device": "android_36",
+                  "deviceid": deviceid, "displayName": "", "enableMultiDevice": "true",
+                  "fw_hr_version": "", "fw_version": "2.2.0.1",
+                  "hardwareVersion": "0.91.133.3", "lang": "zh_CN",
+                  "mac": mac, "sn": sn, "soft_version": "6.16.1",
+                  "sys_model": "24072PX77C", "sys_version": "Android_16",
+                  "timezone": "Asia/Shanghai", "v": "2.0",
+              }
+              bind_headers = {**common_headers, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"}
+              resp = requests.post(bind_url, params={"r": bind_r}, data=bind_post, headers=bind_headers, timeout=15)
+              print(f"  HTTP={resp.status_code} 响应={resp.text[:300]}")
+              if resp.status_code == 200:
+                  rj = resp.json()
+                  if rj.get("code") == 1:
+                      print(f"✅ 自动绑定虚拟手环成功！MAC={mac}")
+                  else:
+                      print(f"⚠️ 绑定失败 code={rj.get('code')} msg={rj.get('message','')}")
+                      print("继续尝试提交步数（可能已有其他设备）...")
+              else:
+                  print(f"⚠️ 绑定请求异常 HTTP={resp.status_code}")
+          else:
+              print("✅ 已有手环设备，跳觇绑定")
+          print("::endgroup::")
+
+          # Step 4: 提交步数
           print(f"::group::设置步数 {step}")
           ok, msg = zepp_helper.post_fake_brand_data(str(step), app_token, user_id)
           if ok:
@@ -88,3 +191,4 @@ jobs:
               exit(1)
           print("::endgroup::")
           PYEOF
+
