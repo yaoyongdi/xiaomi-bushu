@@ -267,7 +267,7 @@ def api_run_single_account(account_id):
     if result['success']:
         log_id = add_step_log(
             session['user_id'], target['id'], target['phone'],
-            step if mode != 'random' else 0, 'pending',
+            step if mode != 'random' else 0, 'success',
             f"[手动] 已提交到 GitHub (Run #{result['run_id']})",
         )
         result['log_id'] = log_id
@@ -335,8 +335,8 @@ def api_run_all_accounts():
         result = run_single_github(acc['phone'], acc['password'], acc['min_step'], acc['max_step'], step=step)
         add_step_log(
             session['user_id'], acc['id'], acc['phone'],
-            step, 'pending' if result['success'] else 'failed',
-            f"[手动] {result.get('message', '')}",
+            step, 'success' if result['success'] else 'failed',
+            f"[手动] 已提交到 GitHub (Run #{result.get('run_id', 'unknown')})",
         )
         results.append({
             'phone': acc['phone'],
